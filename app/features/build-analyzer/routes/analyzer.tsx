@@ -86,10 +86,11 @@ import {
 import "../analyzer.css";
 import * as R from "remeda";
 import { SendouSwitch } from "~/components/elements/Switch";
+import { Placeholder } from "~/components/Placeholder";
 import { WeaponSelect } from "~/components/WeaponSelect";
 import { logger } from "~/utils/logger";
 
-export const CURRENT_PATCH = "10.0";
+export const CURRENT_PATCH = "10.1";
 
 export const meta: MetaFunction = (args) => {
 	return metaTags({
@@ -117,7 +118,7 @@ export default function BuildAnalyzerShell() {
 	const isMounted = useIsMounted();
 
 	if (!isMounted) {
-		return null;
+		return <Placeholder />;
 	}
 
 	return <BuildAnalyzerPage />;
@@ -249,7 +250,7 @@ function BuildAnalyzerPage() {
 						<div className="w-full">
 							<WeaponSelect
 								label={t("analyzer:weaponSelect.label")}
-								initialValue={mainWeaponId}
+								value={mainWeaponId}
 								onChange={(val) =>
 									handleChange({
 										newMainWeaponId: val,

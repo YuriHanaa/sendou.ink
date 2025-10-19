@@ -11,15 +11,15 @@ import type {
 	TournamentData,
 	TournamentDataTeam,
 } from "~/features/tournament-bracket/core/Tournament.server";
-import type { TournamentMaplistSource } from "~/modules/tournament-map-list-generator";
+import type { TournamentMaplistSource } from "~/modules/tournament-map-list-generator/types";
 import { metaTags } from "~/utils/remix";
 import {
 	teamPage,
 	tournamentMatchPage,
 	tournamentTeamPage,
 	userPage,
-	userSubmittedImage,
 } from "~/utils/urls";
+import { userSubmittedImage } from "~/utils/urls-img";
 import { TeamWithRoster } from "../components/TeamWithRoster";
 import * as Standings from "../core/Standings";
 import type { PlayedSet } from "../core/sets.server";

@@ -53,14 +53,6 @@ export const BADGES_DOC_LINK =
 export const CREATING_TOURNAMENT_DOC_LINK =
 	"https://github.com/sendou-ink/sendou.ink/blob/rewrite/docs/tournament-creation.md";
 
-const USER_SUBMITTED_IMAGE_ROOT =
-	"https://sendou.nyc3.cdn.digitaloceanspaces.com";
-export const userSubmittedImage = (fileName: string) =>
-	`${USER_SUBMITTED_IMAGE_ROOT}/${fileName}`;
-// images with https are not hosted on spaces, this is used for local development
-export const conditionalUserSubmittedImage = (fileName: string) =>
-	fileName.includes("https") ? fileName : userSubmittedImage(fileName);
-
 export const PLUS_SERVER_DISCORD_URL = "https://discord.gg/FW4dKrY";
 export const SENDOU_INK_DISCORD_URL = "https://discord.gg/sendou";
 export const SENDOU_INK_PATREON_URL = "https://patreon.com/sendou";
@@ -100,6 +92,7 @@ export const NEW_TEAM_PAGE = "/t?new=true";
 export const CALENDAR_PAGE = "/calendar";
 export const CALENDAR_NEW_PAGE = "/calendar/new";
 export const TOURNAMENT_NEW_PAGE = "/calendar/new?tournament=true";
+export const ORGANIZATION_NEW_PAGE = "/org/new";
 export const CALENDAR_TOURNAMENTS_PAGE = "/calendar?tournaments=true";
 export const STOP_IMPERSONATING_URL = "/auth/impersonate/stop";
 export const SEED_URL = "/seed";
@@ -342,8 +335,6 @@ export const tournamentDivisionsPage = (tournamentId: number) =>
 	`/to/${tournamentId}/divisions`;
 export const tournamentResultsPage = (tournamentId: number) =>
 	`/to/${tournamentId}/results`;
-export const tournamentBracketsSubscribePage = (tournamentId: number) =>
-	`/to/${tournamentId}/brackets/subscribe`;
 export const tournamentMatchPage = ({
 	tournamentId,
 	matchId,
@@ -351,13 +342,6 @@ export const tournamentMatchPage = ({
 	tournamentId: number;
 	matchId: number;
 }) => `/to/${tournamentId}/matches/${matchId}`;
-export const tournamentMatchSubscribePage = ({
-	tournamentId,
-	matchId,
-}: {
-	tournamentId: number;
-	matchId: number;
-}) => `/to/${tournamentId}/matches/${matchId}/subscribe`;
 export const tournamentJoinPage = ({
 	tournamentId,
 	inviteCode,

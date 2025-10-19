@@ -10,7 +10,6 @@ import type {
 	TablesInsertable,
 	UserPreferences,
 } from "~/db/tables";
-import type { ChatUser } from "~/features/chat/components/Chat";
 import { userRoles } from "~/modules/permissions/mapper.server";
 import { isSupporter } from "~/modules/permissions/utils";
 import { databaseTimestampNow, dateToDatabaseTimestamp } from "~/utils/dates";
@@ -18,6 +17,7 @@ import invariant from "~/utils/invariant";
 import type { CommonUser } from "~/utils/kysely.server";
 import { COMMON_USER_FIELDS, userChatNameColor } from "~/utils/kysely.server";
 import { safeNumberParse } from "~/utils/number";
+import type { ChatUser } from "../chat/chat-types";
 
 const identifierToUserIdQuery = (identifier: string) =>
 	db
@@ -432,11 +432,9 @@ const withMaxEventStartTime = (eb: ExpressionBuilder<DB, "CalendarEvent">) => {
 		.whereRef("CalendarEventDate.eventId", "=", "CalendarEvent.id")
 		.as("startTime");
 };
-export function findResultsByUserId(
-	userId: number,
-	{ showHighlightsOnly = false }: { showHighlightsOnly?: boolean } = {},
-) {
-	let calendarEventResultsQuery = db
+
+const baseCalendarEventResultsQuery = (userId: number) =>
+	db
 		.selectFrom("CalendarEventResultPlayer")
 		.innerJoin(
 			"CalendarEventResultTeam",
@@ -453,7 +451,33 @@ export function findResultsByUserId(
 				.onRef("UserResultHighlight.teamId", "=", "CalendarEventResultTeam.id")
 				.on("UserResultHighlight.userId", "=", userId),
 		)
-		.select(({ eb, fn }) => [
+		.where("CalendarEventResultPlayer.userId", "=", userId);
+
+const baseTournamentResultsQuery = (userId: number) =>
+	db
+		.selectFrom("TournamentResult")
+		.innerJoin(
+			"TournamentTeam",
+			"TournamentTeam.id",
+			"TournamentResult.tournamentTeamId",
+		)
+		.innerJoin(
+			"CalendarEvent",
+			"CalendarEvent.tournamentId",
+			"TournamentResult.tournamentId",
+		)
+		.where("TournamentResult.userId", "=", userId);
+
+export function findResultsByUserId(
+	userId: number,
+	{
+		showHighlightsOnly = false,
+		limit,
+		offset,
+	}: { showHighlightsOnly?: boolean; limit?: number; offset?: number } = {},
+) {
+	let calendarEventResultsQuery = baseCalendarEventResultsQuery(userId).select(
+		({ eb, fn }) => [
 			"CalendarEvent.id as eventId",
 			sql<number>`null`.as("tournamentId"),
 			"CalendarEventResultTeam.placement",
@@ -486,22 +510,11 @@ export function findResultsByUserId(
 						]),
 					),
 			).as("mates"),
-		])
-		.where("CalendarEventResultPlayer.userId", "=", userId);
+		],
+	);
 
-	let tournamentResultsQuery = db
-		.selectFrom("TournamentResult")
-		.innerJoin(
-			"TournamentTeam",
-			"TournamentTeam.id",
-			"TournamentResult.tournamentTeamId",
-		)
-		.innerJoin(
-			"CalendarEvent",
-			"CalendarEvent.tournamentId",
-			"TournamentResult.tournamentId",
-		)
-		.select(({ eb }) => [
+	let tournamentResultsQuery = baseTournamentResultsQuery(userId).select(
+		({ eb }) => [
 			sql<number>`null`.as("eventId"),
 			"TournamentResult.tournamentId",
 			"TournamentResult.placement",
@@ -529,8 +542,8 @@ export function findResultsByUserId(
 					)
 					.where("TournamentResult2.userId", "!=", userId),
 			).as("mates"),
-		])
-		.where("TournamentResult.userId", "=", userId);
+		],
+	);
 
 	if (showHighlightsOnly) {
 		calendarEventResultsQuery = calendarEventResultsQuery.where(
@@ -545,11 +558,53 @@ export function findResultsByUserId(
 		);
 	}
 
-	return calendarEventResultsQuery
+	let query = calendarEventResultsQuery
 		.unionAll(tournamentResultsQuery)
 		.orderBy("startTime", "desc")
-		.$narrowType<{ startTime: NotNull }>()
-		.execute();
+		.$narrowType<{ startTime: NotNull }>();
+
+	if (limit !== undefined) {
+		query = query.limit(limit);
+	}
+
+	if (offset !== undefined) {
+		query = query.offset(offset);
+	}
+
+	return query.execute();
+}
+
+export async function countResultsByUserId(
+	userId: number,
+	{ showHighlightsOnly = false }: { showHighlightsOnly?: boolean } = {},
+) {
+	let calendarEventResultsQuery = baseCalendarEventResultsQuery(userId).select(
+		({ fn }) => [fn.countAll<number>().as("count")],
+	);
+
+	let tournamentResultsQuery = baseTournamentResultsQuery(userId).select(
+		({ fn }) => [fn.countAll<number>().as("count")],
+	);
+
+	if (showHighlightsOnly) {
+		calendarEventResultsQuery = calendarEventResultsQuery.where(
+			"UserResultHighlight.userId",
+			"is not",
+			null,
+		);
+		tournamentResultsQuery = tournamentResultsQuery.where(
+			"TournamentResult.isHighlight",
+			"=",
+			1,
+		);
+	}
+
+	const [calendarEventResults, tournamentResults] = await Promise.all([
+		calendarEventResultsQuery.executeTakeFirst(),
+		tournamentResultsQuery.executeTakeFirst(),
+	]);
+
+	return (calendarEventResults?.count ?? 0) + (tournamentResults?.count ?? 0);
 }
 
 export async function hasHighlightedResultsByUserId(userId: number) {
@@ -835,6 +890,8 @@ export function updateProfile(args: UpdateProfileArgs) {
 				showDiscordUniqueName: args.showDiscordUniqueName,
 				commissionText: args.commissionText,
 				commissionsOpen: args.commissionsOpen,
+				commissionsOpenedAt:
+					args.commissionsOpen === 1 ? databaseTimestampNow() : null,
 			})
 			.where("id", "=", args.userId)
 			.returning(["User.id", "User.customUrl", "User.discordId"])

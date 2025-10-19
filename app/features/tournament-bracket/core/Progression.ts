@@ -10,7 +10,7 @@ import invariant from "../../../utils/invariant";
 export interface DBSource {
 	/** Index of the bracket where the teams come from */
 	bracketIdx: number;
-	/** Team placements that join this bracket. E.g. [1, 2] would mean top 1 & 2 teams. [-1] would mean the last placing teams. */
+	/** Team placements that join this bracket. E.g. [1, 2] would mean top 1 & 2 teams. [-1] would mean the last placing teams. Can be empty array for Swiss brackets with early advance. */
 	placements: number[];
 }
 
@@ -92,6 +92,11 @@ export type ValidationError =
 	| {
 			type: "NO_DE_POSITIVE";
 			bracketIdx: number;
+	  }
+	// Swiss bracket with early advance/elimination must have a destination bracket
+	| {
+			type: "SWISS_EARLY_ADVANCE_NO_DESTINATION";
+			bracketIdx: number;
 	  };
 
 /** Takes validated brackets and returns them in the format that is ready for user input. */
@@ -110,7 +115,10 @@ export function validatedBracketsToInputFormat(
 				: undefined,
 			sources: bracket.sources?.map((source) => ({
 				bracketId: String(source.bracketIdx),
-				placements: placementsToString(source.placements),
+				placements:
+					source.placements.length > 0
+						? placementsToString(source.placements)
+						: "",
 			})),
 		};
 	});
@@ -258,6 +266,14 @@ export function bracketsToValidationError(
 		};
 	}
 
+	faultyBracketIdx = swissEarlyAdvanceWithoutDestination(brackets);
+	if (typeof faultyBracketIdx === "number") {
+		return {
+			type: "SWISS_EARLY_ADVANCE_NO_DESTINATION",
+			bracketIdx: faultyBracketIdx,
+		};
+	}
+
 	return null;
 }
 
@@ -273,13 +289,26 @@ function toOutputBracketFormat(brackets: InputBracket[]): ParsedBracket[] {
 				: undefined,
 			sources: bracket.sources?.map((source) => {
 				const placements = parsePlacements(source.placements);
-				if (!placements) {
+				const sourceBracketIdx = brackets.findIndex(
+					(b) => b.id === source.bracketId,
+				);
+				const sourceBracket = brackets[sourceBracketIdx];
+
+				// Allow empty placements only for Swiss brackets with early advance
+				if (placements && placements.length === 0) {
+					const isSwissWithEarlyAdvance =
+						sourceBracket?.type === "swiss" &&
+						sourceBracket?.settings?.advanceThreshold;
+					if (!isSwissWithEarlyAdvance) {
+						throw { badBracketIdx: bracketIdx };
+					}
+				} else if (placements === null) {
 					throw { badBracketIdx: bracketIdx };
 				}
 
 				return {
-					bracketIdx: brackets.findIndex((b) => b.id === source.bracketId),
-					placements,
+					bracketIdx: sourceBracketIdx,
+					placements: placements ?? [],
 				};
 			}),
 		};
@@ -298,6 +327,11 @@ function toOutputBracketFormat(brackets: InputBracket[]): ParsedBracket[] {
 }
 
 function parsePlacements(placements: string) {
+	// Handle empty string case
+	if (placements.trim() === "") {
+		return [];
+	}
+
 	const parts = placements.split(",");
 
 	const result: number[] = [];
@@ -516,6 +550,24 @@ function noDoubleEliminationPositive(brackets: ParsedBracket[]) {
 	return null;
 }
 
+function swissEarlyAdvanceWithoutDestination(brackets: ParsedBracket[]) {
+	for (const [bracketIdx, bracket] of brackets.entries()) {
+		if (bracket.type === "swiss" && bracket.settings.advanceThreshold) {
+			const hasDestination = brackets.some((otherBracket) =>
+				otherBracket.sources?.some(
+					(source) => source.bracketIdx === bracketIdx,
+				),
+			);
+
+			if (!hasDestination) {
+				return bracketIdx;
+			}
+		}
+	}
+
+	return null;
+}
+
 /** Takes the return type of `Progression.validatedBrackets` as an input and narrows the type to a successful validation */
 export function isBrackets(
 	input: ParsedBracket[] | ValidationError,
@@ -546,6 +598,27 @@ export function isUnderground(idx: number, brackets: ParsedBracket[]) {
 	return !resolveMainBracketProgression(brackets).includes(idx);
 }
 
+/**
+ * Returns the depth of a bracket in the tournament progression.
+ * Depth is the distance from a starting bracket (bracket with no sources).
+ * Starting brackets have depth 0, brackets sourced from them have depth 1, etc.
+ */
+export function bracketDepth(idx: number, brackets: ParsedBracket[]): number {
+	invariant(idx < brackets.length, "Bracket index out of bounds");
+
+	const bracket = brackets[idx];
+
+	if (!bracket.sources || bracket.sources.length === 0) {
+		return 0;
+	}
+
+	const sourceDepths = bracket.sources.map((source) =>
+		bracketDepth(source.bracketIdx, brackets),
+	);
+
+	return Math.max(...sourceDepths) + 1;
+}
+
 function resolveMainBracketProgression(brackets: ParsedBracket[]) {
 	if (brackets.length === 1) return [0];
 
@@ -555,7 +628,8 @@ function resolveMainBracketProgression(brackets: ParsedBracket[]) {
 		const bracket = brackets.findIndex((bracket) =>
 			bracket.sources?.some(
 				(source) =>
-					source.placements.includes(1) &&
+					// empty array is the swiss early advance case
+					(source.placements.includes(1) || source.placements.length === 0) &&
 					source.bracketIdx === bracketIdxToFind,
 			),
 		);

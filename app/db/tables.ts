@@ -124,18 +124,20 @@ export interface BuildAbility {
 	buildId: number;
 	gearType: GearType;
 	slotIndex: number;
+	/** 10 if main ability, 3 if sub */
+	abilityPoints: GeneratedAlways<number>;
 }
 
 export interface BuildWeapon {
 	buildId: number;
 	weaponSplId: MainWeaponId;
+	/** Has the owner of this build reached top 500 of X Rank with this weapon? Denormalized for performance reasons. */
+	isTop500: Generated<DBBoolean>;
+	/** Plus tier or 4 if none. Denormalized for performance reasons. */
+	tier: Generated<number>;
+	/** Last time the build was updated. Denormalized for performance reasons. */
+	updatedAt: Generated<number>;
 }
-
-/** Image associated with the avatar when the event is showcased on the front page */
-export type CalendarEventAvatarMetadata = {
-	backgroundColor: string;
-	textColor: string;
-};
 
 export type CalendarEventTag = keyof typeof tags;
 
@@ -153,8 +155,6 @@ export interface CalendarEvent {
 	tournamentId: number | null;
 	organizationId: number | null;
 	avatarImgId: number | null;
-	// TODO: remove in migration
-	avatarMetadata: JSONColumnTypeNullable<CalendarEventAvatarMetadata>;
 }
 
 export interface CalendarEventBadge {
@@ -464,6 +464,8 @@ export interface TournamentSettings {
 		roundCount: number;
 	};
 	minMembersPerTeam?: number;
+	/** Maximum number of team members that can be registered (only applies to 4v4 tournaments) */
+	maxMembersPerTeam?: number;
 	isTest?: boolean;
 }
 
@@ -537,8 +539,6 @@ export const TournamentMatchStatus = {
 };
 
 export interface TournamentMatch {
-	// TODO: remove
-	bestOf: Generated<3 | 5 | 7>;
 	chatCode: string | null;
 	groupId: number;
 	id: GeneratedAlways<number>;
@@ -620,7 +620,7 @@ export interface TournamentRound {
 	id: GeneratedAlways<number>;
 	number: number;
 	stageId: number;
-	maps: JSONColumnTypeNullable<TournamentRoundMaps>;
+	maps: JSONColumnType<TournamentRoundMaps>;
 }
 
 // when updating this also update `defaultBracketSettings` in tournament-utils.ts
@@ -633,6 +633,8 @@ export interface TournamentStageSettings {
 	groupCount?: number;
 	// SWISS
 	roundCount?: number;
+	/** (Swiss only) Number of wins required for a team to advance early. When set, teams advance at this win count and are eliminated at (roundCount - advanceThreshold + 1) losses. */
+	advanceThreshold?: number;
 }
 
 export const TOURNAMENT_STAGE_TYPES = [
@@ -758,6 +760,7 @@ export interface TournamentOrganizationBannedUser {
 	userId: number;
 	privateNote: string | null;
 	updatedAt: Generated<number>;
+	expiresAt: number | null;
 }
 
 /** Indicates a user trusts another. Allows direct adding to groups/teams without invite links. */
@@ -833,6 +836,7 @@ export interface User {
 	bannedReason: string | null;
 	bio: string | null;
 	commissionsOpen: Generated<number | null>;
+	commissionsOpenedAt: number | null;
 	commissionText: string | null;
 	country: string | null;
 	css: JSONColumnTypeNullable<Record<string, string>>;
